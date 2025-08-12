@@ -1,4 +1,5 @@
 ## **실험 환경 설명**
+<img width="1527" height="679" alt="image" src="https://github.com/user-attachments/assets/5dfa50b0-fc49-4b45-a774-4a66337e8e34" />
 
 ### 1. 목적
 
