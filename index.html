@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TSN CBS 실험 대시보드 (HD→8K)</title>
+  <meta name="description" content="Microchip LAN9662 + NXP GoldBox + Intel i210 환경에서 CBS(Idle Slope) 기반 iperf3 테스트 명령/YAML 생성과 손실 패턴 시뮬레이션" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b0d12; --card:#121622; --muted:#97a0b3; --text:#e8ecf8; --accent:#7aa2ff; --accent2:#79e5c1;
+      --border:#1f2433; --code:#0e1320; --good:#66d38d; --warn:#ffcc66; --bad:#ff6b7a;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b0d12 0%,#0e1320 100%);color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    a{color:var(--accent)}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:22px;margin:0;font-weight:700;letter-spacing:.2px}
+    .hint{color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+    .card h2{margin:0 0 12px 0;font-size:16px}
+    label{display:block;margin:8px 0 4px 2px;color:var(--muted)}
+    input,select,button,textarea{width:100%;border-radius:10px;border:1px solid var(--border);background:#0c1220;color:var(--text);padding:10px 12px}
+    input:focus,select:focus,textarea:focus{outline:1.5px solid var(--accent)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn{background:linear-gradient(135deg,#203157,#10192c);border:1px solid #24375f;cursor:pointer;transition:.15s}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(122,162,255,.15)}
+    .btn.secondary{background:#0c1220;border-color:#2a3247}
+    .tag{display:inline-block;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px;margin-right:6px}
+    pre{background:var(--code);border:1px solid var(--border);padding:12px;border-radius:12px;overflow:auto}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px}
+    .cols-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .kvs{display:flex;gap:8px;flex-wrap:wrap}
+    .kvs .kv{background:#0c1220;border:1px dashed #2a3247;border-radius:8px;padding:6px 9px;font-size:12px;color:#9fb0d1}
+    .pill{padding:3px 8px;border-radius:8px}
+    .ok{background:#12281b;border:1px solid #1b5d35;color:#9be4bd}
+    .warn{background:#2a2414;border:1px solid #6b5a1b;color:#ffe19a}
+    footer{opacity:.9;margin:18px 0 24px 0;color:#8e99b3}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>TSN CBS 실험 대시보드 <span class="hint">(HD → 8K, 단일 파일)</span></h1>
+      <div class="kvs">
+        <span class="kv">장치: NXP GoldBox → Microchip LAN9662 → Intel i210</span>
+        <span class="kv">툴: iperf3 / Wireshark</span>
+        <span class="kv">QoS: 802.1Qav CBS</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- 좌: 컨트롤 -->
+      <section class="card">
+        <h2>① 실험 파라미터</h2>
+        <div class="row">
+          <div>
+            <label>해상도 프리셋</label>
+            <select id="preset">
+              <option value="HD|3.5">HD (720p) – 3.5 Mb/s</option>
+              <option value="FHD|8">FHD (1080p) – 8 Mb/s</option>
+              <option value="4K|20">4K (2160p) – 20 Mb/s</option>
+              <option value="8K|80">8K (4320p) – 80 Mb/s</option>
+            </select>
+          </div>
+          <div>
+            <label>한도(Idle Slope, Mb/s)</label>
+            <input id="limit" type="number" step="0.1" value="3.5" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>LAN9662 포트 번호</label>
+            <input id="portNo" type="number" value="2" />
+          </div>
+          <div>
+            <label>Traffic Class</label>
+            <input id="tc" type="number" value="0" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>iperf3 대상 IP</label>
+            <input id="dstIP" value="169.254.59.170" />
+          </div>
+          <div>
+            <label>iperf3 포트</label>
+            <input id="dstPort" type="number" value="5202" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>배율 세트</label>
+            <input id="factors" value="0.8,0.9,1.0,1.1,1.2" />
+          </div>
+          <div>
+            <label>손실 추정 오버헤드(%) <span class="hint">(L2/L1 여유)</span></label>
+            <input id="oh" type="number" step="1" value="0" />
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" id="genAll">YAML + iperf3 + 그래프 업데이트</button>
+          <button class="btn secondary" id="copyAll">모두 복사</button>
+        </div>
+        <p class="hint" style="margin-top:10px">※ iperf3는 UDP/무태그/DSCP=0 → 스위치 기본 매핑(PCP0→TC0)이면 BE 트래픽이 TC0로 분류됩니다. CBS는 <b>i210 방향 포트</b>의 해당 TC에 설정해야 효과가 납니다.</p>
+      </section>
+
+      <!-- 우: 코드 출력 -->
+      <section class="card">
+        <h2>② 생성된 스크립트</h2>
+        <div class="cols-2">
+          <div>
+            <div class="tag">CBS YANG ipatch (kbps)</div>
+            <pre><code id="yamlOut"># 먼저 왼쪽에서 "YAML + iperf3"를 눌러 생성하세요.</code></pre>
+          </div>
+          <div>
+            <div class="tag">iperf3 전송 for 루프 (5단계)</div>
+            <pre><code id="iperfOut"># 먼저 왼쪽에서 "YAML + iperf3"를 눌러 생성하세요.</code></pre>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn secondary" id="copyYaml">YAML 복사</button>
+          <button class="btn secondary" id="copyIperf">iperf3 복사</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:16px">
+      <h2>③ 손실 패턴 시뮬레이션</h2>
+      <div class="row">
+        <div>
+          <canvas id="chart" height="140"></canvas>
+        </div>
+        <div>
+          <p class="hint">• 파란선: 요청 비트레이트 (iperf3 -b)<br/>• 보라선: CBS 적용 후 평균 egress (Idle Slope 상한)<br/>• 빨간 막대: 이론적 손실률 추정 <span class="pill warn">loss ≈ max(0, 1 - limit/offered)</span></p>
+          <div id="nums" class="kvs"></div>
+          <p class="hint">※ 이는 개념 확인용 근사치입니다. 실제 손실은 큐 길이, 버스트(hi-credit), 프레임 크기, NIC 오프로딩 등에 의해 달라질 수 있습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>④ 참고 메모</h2>
+      <ul>
+        <li>CBS는 <b>Idle Slope</b>만 주면 나머지(<code>send-slope</code>, <code>hi-credit</code>, <code>lo-credit</code>)는 장치가 자동 산출합니다.</li>
+        <li>해상도별 권장 한도(예시, HEVC 기준): HD 3.5 / FHD 8 / 4K 20 / 8K 80 Mb/s. 한도 설정은 <b>최대 비트레이트 × (1.05~1.15)</b> 권장.</li>
+        <li>L2/L1 오버헤드 때문에 iperf3의 보고 값(페이로드 기준)과 실제 선로 점유율은 다를 수 있습니다.</li>
+      </ul>
+    </section>
+
+    <footer>
+      ⓒ 2025 CBS Demo. Single-file HTML for GitHub Pages. — 필요 시 이 파일을 <b>index.html</b>로 저장 후 Pages에 올리세요.
+    </footer>
+  </div>
+
+  <script>
+    const $ = (q)=>document.querySelector(q);
+
+    // Chart init
+    const ctx = document.getElementById('chart');
+    let chart = new Chart(ctx, {
+      type: 'bar',
+      data: {labels: [], datasets: [
+        {type:'line', label:'요청 비트레이트 (Mb/s)', data: [], borderColor:'#7aa2ff', backgroundColor:'transparent', tension:.25, borderWidth:2},
+        {type:'line', label:'CBS 적용 후 (Mb/s)', data: [], borderColor:'#b28cff', backgroundColor:'transparent', tension:.25, borderDash:[6,6], borderWidth:2},
+        {label:'추정 손실률 (%)', data: [], backgroundColor:'#ff6b7a88'}
+      ]},
+      options: {
+        responsive:true,
+        plugins:{legend:{labels:{color:'#cbd5e1'}}},
+        scales:{
+          x:{ticks:{color:'#aab4c8'}},
+          y:{beginAtZero:true,ticks:{color:'#aab4c8'}}
+        }
+      }
+    });
+
+    function toKBps(mbps){return Math.round(Number(mbps)*1000)}
+    function parseFactors(s){return s.split(',').map(x=>Number(x.trim())).filter(x=>!isNaN(x) && x>0)}
+
+    function genYaml(limitMb){
+      const kbps = toKBps(limitMb);
+      const portNo = $('#portNo').value.trim();
+      const tc = $('#tc').value.trim();
+      return `cat <<'EOF' > ipatch-p${portNo}-cbs-tc${tc}-${limitMb.toString().replace('.', '_')}m.yaml\n- ? "/ietf-interfaces:interfaces/interface[name='${portNo}']/mchp-velocitysp-port:eth-qos/config/traffic-class-shapers"\n  : traffic-class: ${tc}\n    credit-based:\n      idle-slope: ${kbps}\nEOF\n\nsudo dr mup1cc -d /dev/ttyACM0 -m ipatch -i ipatch-p${portNo}-cbs-tc${tc}-${limitMb.toString().replace('.', '_')}m.yaml`;
+    }
+
+    function genIperf(limitMb){
+      const dst = $('#dstIP').value.trim();
+      const port = $('#dstPort').value.trim();
+      const factors = parseFactors($('#factors').value);
+      const list = factors.map(f=> (limitMb*f).toFixed(2));
+      const lines = [
+        `for b in ${list.join(' ')}; do`,
+        `  echo "=== -b ${'$'}{b}M ==="`,
+        `  iperf3 -c ${dst} -u -p ${port} -b ${'$'}{b}M`,
+        `done`
+      ];
+      return lines.join('\n');
+    }
+
+    function updateChart(limitMb){
+      const oh = Number($('#oh').value||0) / 100; // overhead fraction
+      const factors = parseFactors($('#factors').value);
+      const offered = factors.map(f=> Number((limitMb*f).toFixed(2)));
+      const shaped = offered.map(v=> Math.min(v*(1-oh), limitMb));
+      const lossPct = offered.map(v=> v<=0?0: Math.max(0, (1 - (limitMb/(v*(1-oh))))*100).toFixed(1));
+      chart.data.labels = offered.map(v=> v.toFixed(2)+'M');
+      chart.data.datasets[0].data = offered;
+      chart.data.datasets[1].data = offered.map(()=> limitMb);
+      chart.data.datasets[2].data = lossPct.map(x=> Number(x));
+      chart.update();
+
+      const nums = offered.map((v,i)=>`<span class="kv">요청 ${v.toFixed(2)}M → 손실 ${lossPct[i]}%</span>`).join('');
+      $('#nums').innerHTML = nums;
+    }
+
+    function runAll(){
+      const [name, mb] = $('#preset').value.split('|');
+      const limitMb = Number($('#limit').value||mb);
+      $('#limit').value = limitMb;
+      $('#yamlOut').textContent = genYaml(limitMb);
+      $('#iperfOut').textContent = genIperf(limitMb);
+      updateChart(limitMb);
+    }
+
+    $('#preset').addEventListener('change', e=>{
+      const limit = Number(e.target.value.split('|')[1]);
+      $('#limit').value = limit;
+      runAll();
+    });
+    $('#genAll').addEventListener('click', runAll);
+    $('#copyYaml').addEventListener('click', ()=>navigator.clipboard.writeText($('#yamlOut').textContent));
+    $('#copyIperf').addEventListener('click', ()=>navigator.clipboard.writeText($('#iperfOut').textContent));
+    $('#copyAll').addEventListener('click', ()=>{
+      const content = `# YAML\n${$('#yamlOut').textContent}\n\n# iperf3\n${$('#iperfOut').textContent}`;
+      navigator.clipboard.writeText(content);
+    });
+
+    // 초기 렌더
+    runAll();
+  </script>
+</body>
+</html>
