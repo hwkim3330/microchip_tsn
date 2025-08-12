@@ -147,3 +147,74 @@ iperf3 -c 169.254.59.170 -u -p 5202 -b 1M
 
 ---
  
+
+
+## 📌 1. send-slope
+
+* **정의**
+  패킷을 **전송 중일 때** 크레딧이 감소하는 속도 (bps 단위).
+* 계산식 (IEEE 802.1Qav 규격)
+
+$$
+\text{SendSlope} = \text{IdleSlope} - \text{LinkSpeed}
+$$
+
+* IdleSlope가 9 Mb/s, 링크가 1 Gb/s라면:
+
+$$
+\text{SendSlope} = 9\,\text{Mb/s} - 1000\,\text{Mb/s} = -991\,\text{Mb/s}
+$$
+
+→ 전송하는 동안 **크레딧이 급격히 감소**.
+
+---
+
+## 📌 2. hi-credit
+
+* **정의**
+  전송 시작 전 **쌓아둘 수 있는 크레딧의 최대값** (Bytes 단위).
+* 의미
+  → 최대 버스트 크기를 결정.
+  → **최악의 경우 기다려야 하는 상위 우선순위 트래픽의 길이**를 고려해 계산.
+* 계산식 (IEEE 802.1Qav 34.3.1.3):
+
+$$
+\text{hiCredit} = \text{MaxInterferenceSize} \times \frac{\text{IdleSlope}}{\text{LinkSpeed} - \text{IdleSlope}}
+$$
+
+* MaxInterferenceSize: 큐보다 **더 높은 우선순위 트래픽**이 점유할 수 있는 최대 프레임 크기 (B).
+
+---
+
+## 📌 3. lo-credit
+
+* **정의**
+  전송 후 크레딧이 떨어질 수 있는 **최저값** (Bytes 단위, 보통 음수).
+* 의미
+  → 전송 중 크레딧이 얼마나 바닥까지 내려가는지를 나타냄.
+* 계산식 (IEEE 802.1Qav 34.3.1.4):
+
+$$
+\text{loCredit} = -\text{MaxFrameSize} \times \frac{\text{LinkSpeed} - \text{IdleSlope}}{\text{LinkSpeed}}
+$$
+
+* MaxFrameSize: 이 큐에서 전송할 수 있는 최대 프레임 크기 (B).
+
+---
+
+## 📌 왜 자동 계산되나
+
+* VelocityDRIVE-SP나 대부분의 CBS 구현에서는 **IdleSlope만 지정하면**
+  나머지 값(send/hi/lo)은 표준 수식과 포트 속도/프레임 크기 정보로 자동 산출합니다.
+* 이렇게 하면 사용자가 잘못된 값 입력으로 크레딧 제어가 깨지는 걸 방지.
+
+---
+
+💡 **정리**
+
+* **send-slope**: 전송 중 크레딧 감소율 (IdleSlope − LinkSpeed)
+* **hi-credit**: 대기 중 쌓을 수 있는 크레딧 한도 (버스트 크기 제한)
+* **lo-credit**: 전송 후 크레딧이 떨어질 수 있는 바닥값 (음수)
+
+---
+
